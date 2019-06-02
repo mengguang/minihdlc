@@ -4,9 +4,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-
-typedef void (* sendchar_type) (uint8_t);
-typedef void (* frame_handler_type)(const uint8_t *framebuffer, uint16_t framelength);
+typedef void (*sendchar_type)(uint8_t);
+typedef void (*frame_handler_type)(const uint8_t *framebuffer,
+		uint16_t framelength);
 
 #define MINIHDLC_MAX_FRAME_LENGTH 64
 
