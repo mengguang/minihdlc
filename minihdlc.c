@@ -1,4 +1,5 @@
 #include "minihdlc.h"
+
 /* HDLC Asynchronous framing */
 /* The frame boundary octet is 01111110, (7E in hexadecimal notation) */
 #define FRAME_BOUNDARY_OCTET 0x7E
@@ -16,62 +17,11 @@
 #define CRC16_CCITT_INIT_VAL 0xFFFF
 
 /* 16bit low and high bytes copier */
-#define low(x)    ((x) & 0xFF)
-#define high(x)   (((x)>>8) & 0xFF)
+#define low(x)		((x) & 0xFF)
+#define high(x)		(((x)>>8) & 0xFF)
 
-#include <stdint.h>
-
-#define lo8(x) ((x)&0xff) 
-#define hi8(x) ((x)>>8)
-
-static uint16_t crc16_update(uint16_t crc, uint8_t a) {
-	int i;
-
-	crc ^= a;
-	for (i = 0; i < 8; ++i) {
-		if (crc & 1)
-			crc = (crc >> 1) ^ 0xA001;
-		else
-			crc = (crc >> 1);
-	}
-
-	return crc;
-}
-
-static uint16_t crc_xmodem_update(uint16_t crc, uint8_t data) {
-	int i;
-
-	crc = crc ^ ((uint16_t) data << 8);
-	for (i = 0; i < 8; i++) {
-		if (crc & 0x8000)
-			crc = (crc << 1) ^ 0x1021;
-		else
-			crc <<= 1;
-	}
-
-	return crc;
-}
-static uint16_t _crc_ccitt_update(uint16_t crc, uint8_t data) {
-	data ^= lo8(crc);
-	data ^= data << 4;
-
-	return ((((uint16_t) data << 8) | hi8(crc)) ^ (uint8_t) (data >> 4)
-			^ ((uint16_t) data << 3));
-}
-
-static uint8_t _crc_ibutton_update(uint8_t crc, uint8_t data) {
-	uint8_t i;
-
-	crc = crc ^ data;
-	for (i = 0; i < 8; i++) {
-		if (crc & 0x01)
-			crc = (crc >> 1) ^ 0x8C;
-		else
-			crc >>= 1;
-	}
-
-	return crc;
-}
+#define lo8(x)		((x)&0xff)
+#define hi8(x)		((x)>>8)
 
 struct {
 	sendchar_type sendchar_function;
@@ -82,18 +32,33 @@ struct {
 	uint8_t receive_frame_buffer[MINIHDLC_MAX_FRAME_LENGTH + 1];
 } mhst;
 
-void minihdlc_init(sendchar_type put_char,
-		frame_handler_type hdlc_command_router) {
-	mhst.sendchar_function = put_char;
-	mhst.frame_handler = hdlc_command_router;
+/*
+ Polynomial: x^16 + x^12 + x^5 + 1 (0x8408) Initial value: 0xffff
+ This is the CRC used by PPP and IrDA.
+ See RFC1171 (PPP protocol) and IrDA IrLAP 1.1
+ */
+static uint16_t _crc_ccitt_update(uint16_t crc, uint8_t data) {
+	data ^= lo8(crc);
+	data ^= data << 4;
+
+	return ((((uint16_t) data << 8) | hi8(crc)) ^ (uint8_t) (data >> 4)
+			^ ((uint16_t) data << 3));
+}
+
+void minihdlc_init(sendchar_type sendchar_function,
+		frame_handler_type frame_hander_function) {
+	mhst.sendchar_function = sendchar_function;
+	mhst.frame_handler = frame_hander_function;
 	mhst.frame_position = 0;
 	mhst.frame_checksum = CRC16_CCITT_INIT_VAL;
 	mhst.escape_character = false;
 }
 
 /* Function to send a byte throug USART, I2C, SPI etc.*/
-static void minihdlc_sendchar(uint8_t data) {
-	(*mhst.sendchar_function)(data);
+static inline void minihdlc_sendchar(uint8_t data) {
+	if (mhst.sendchar_function) {
+		(*mhst.sendchar_function)(data);
+	}
 }
 
 /* Function to find valid HDLC frame from incoming data */
@@ -144,14 +109,14 @@ void minihdlc_char_receiver(uint8_t data) {
 }
 
 /* Wrap given data in HDLC frame and send it out byte at a time*/
-void minihdlc_send_frame(const uint8_t *framebuffer, uint8_t frame_length) {
+void minihdlc_send_frame(const uint8_t *frame_buffer, uint8_t frame_length) {
 	uint8_t data;
 	uint16_t fcs = CRC16_CCITT_INIT_VAL;
 
 	minihdlc_sendchar((uint8_t) FRAME_BOUNDARY_OCTET);
 
 	while (frame_length) {
-		data = *framebuffer++;
+		data = *frame_buffer++;
 		fcs = _crc_ccitt_update(fcs, data);
 		if ((data == CONTROL_ESCAPE_OCTET) || (data == FRAME_BOUNDARY_OCTET)) {
 			minihdlc_sendchar((uint8_t) CONTROL_ESCAPE_OCTET);
@@ -175,3 +140,34 @@ void minihdlc_send_frame(const uint8_t *framebuffer, uint8_t frame_length) {
 	minihdlc_sendchar(FRAME_BOUNDARY_OCTET);
 }
 
+/* Wrap given data in HDLC frame and send it to static buffer*/
+
+static uint8_t frame_buffer[MINIHDLC_MAX_FRAME_LENGTH + 1];
+static uint32_t frame_buffer_size = 0;
+
+static void buffer_init() {
+	frame_buffer_size = 0;
+}
+
+static void buffer_push(uint8_t data) {
+	if (frame_buffer_size >= MINIHDLC_MAX_FRAME_LENGTH) {
+		return;
+	}
+	frame_buffer[frame_buffer_size] = data;
+	frame_buffer_size++;
+}
+
+void minihdlc_send_frame_to_buffer(const uint8_t *frame_buffer,
+		uint8_t frame_length) {
+	mhst.sendchar_function = buffer_push;
+	buffer_init();
+	minihdlc_send_frame(frame_buffer, frame_length);
+}
+
+uint8_t *minihdlc_get_buffer() {
+	return frame_buffer;
+}
+
+uint32_t minihdlc_get_buffer_size() {
+	return frame_buffer_size;
+}
