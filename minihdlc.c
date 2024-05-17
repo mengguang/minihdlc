@@ -95,7 +95,7 @@ void minihdlc_char_receiver(uint8_t data) {
 
 	mhst.receive_frame_buffer[mhst.frame_position] = data;
 
-	if (mhst.frame_position - 2 >= 0) {
+	if (mhst.frame_position >= 2) {
 		mhst.frame_checksum = _crc_ccitt_update(mhst.frame_checksum,
 				mhst.receive_frame_buffer[mhst.frame_position - 2]);
 	}
