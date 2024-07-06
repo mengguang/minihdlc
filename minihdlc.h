@@ -17,8 +17,4 @@ void minihdlc_init(sendchar_type sendchar_function,
 void minihdlc_char_receiver(uint8_t data);
 void minihdlc_send_frame(const uint8_t *frame_buffer, uint8_t frame_length);
 
-void minihdlc_send_frame_to_buffer(const uint8_t *frame_buffer, uint8_t frame_length);
-uint8_t *minihdlc_get_buffer();
-uint32_t minihdlc_get_buffer_size();
-
 #endif

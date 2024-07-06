@@ -140,34 +140,3 @@ void minihdlc_send_frame(const uint8_t *frame_buffer, uint8_t frame_length) {
 	minihdlc_sendchar(FRAME_BOUNDARY_OCTET);
 }
 
-/* Wrap given data in HDLC frame and send it to static buffer*/
-
-static uint8_t frame_buffer[MINIHDLC_MAX_FRAME_LENGTH + 1];
-static uint32_t frame_buffer_size = 0;
-
-static void buffer_init() {
-	frame_buffer_size = 0;
-}
-
-static void buffer_push(uint8_t data) {
-	if (frame_buffer_size >= MINIHDLC_MAX_FRAME_LENGTH) {
-		return;
-	}
-	frame_buffer[frame_buffer_size] = data;
-	frame_buffer_size++;
-}
-
-void minihdlc_send_frame_to_buffer(const uint8_t *frame_buffer,
-		uint8_t frame_length) {
-	mhst.sendchar_function = buffer_push;
-	buffer_init();
-	minihdlc_send_frame(frame_buffer, frame_length);
-}
-
-uint8_t *minihdlc_get_buffer() {
-	return frame_buffer;
-}
-
-uint32_t minihdlc_get_buffer_size() {
-	return frame_buffer_size;
-}
