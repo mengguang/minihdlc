@@ -1,4 +1,4 @@
-// compile: gcc -o example example.c .\minihdlc.c -DMINIHDLC_MAX_FRAME_LENGTH=1024
+// compile: gcc -o example example.c minihdlc.c -DMINIHDLC_MAX_FRAME_LENGTH=1024
 
 #include <stdio.h>
 #include <string.h>
